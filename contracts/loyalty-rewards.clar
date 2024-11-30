@@ -84,6 +84,23 @@
         (map-set burned-rewards reward-id true)
         (ok true)))
 
+(define-public (transfer (reward-id uint) (sender principal) (recipient principal))
+    ;; Transfers a reward from the sender to the recipient
+    (begin
+        (asserts! (is-eq recipient tx-sender) err-not-owner)
+        (asserts! (not (is-reward-burned reward-id)) err-already-burned)
+        (let ((actual-sender (unwrap! (map-get? reward-owner reward-id) err-not-owner)))
+            (asserts! (is-eq actual-sender sender) err-not-owner)
+            (try! (nft-transfer? loyalty-reward reward-id sender recipient))
+            (ok true))))
+
+(define-public (update-points (reward-id uint) (new-points uint))
+    ;; Updates the points of a specified reward
+    (begin
+        (asserts! (is-valid-reward-id reward-id) err-not-owner)
+        (asserts! (is-valid-points new-points) err-invalid-points)
+        (map-set reward-points reward-id new-points)
+        (ok true)))
 
 ;; Read-Only Functions
 (define-read-only (get-reward-points (reward-id uint))
@@ -97,3 +114,37 @@
 (define-read-only (get-last-reward-id)
     ;; Returns the last assigned reward ID
     (ok (var-get last-reward-id)))
+
+(define-read-only (is-burned (reward-id uint))
+    ;; Checks if a reward has been burned
+    (ok (is-reward-burned reward-id)))
+
+(define-read-only (get-batch-reward-ids (start-id uint) (count uint))
+    ;; Returns a list of reward IDs in a batch
+    (ok (map uint-to-response 
+        (unwrap-panic (as-max-len? 
+            (list-rewards start-id count) 
+            u100)))))
+
+;; Private Functions for Listing Rewards
+(define-private (uint-to-response (id uint))
+    ;; Converts a reward ID to a response object with details
+    {
+        reward-id: id,
+        points: (unwrap-panic (get-reward-points id)),
+        owner: (unwrap-panic (get-reward-owner id)),
+        burned: (unwrap-panic (is-burned id))
+    })
+
+(define-private (list-rewards (start uint) (count uint))
+    ;; Generates a list of reward IDs starting from `start` up to `count`
+    (map + (list start) (generate-sequence count)))
+
+(define-private (generate-sequence (length uint))
+    ;; Generates a sequence of numbers up to the specified length
+    (map - (list length)))
+
+;; Contract Initialization
+(begin
+    ;; Initializes contract state variables
+    (var-set last-reward-id u0))
